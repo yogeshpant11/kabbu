@@ -1,0 +1,113 @@
+<?php
+/**
+ * @file
+ * Field hooks to implement hook_help.
+ */
+
+use Drupal\Core\Routing\RouteMatchInterface;
+use Drupal\file\Entity\File;
+use Drupal\Core\Form\FormBase;
+use Drupal\Core\Form\FormStateInterface;
+use Drupal\image\Entity\ImageStyle;
+
+function avatar_help($route_name, RouteMatchInterface $route_match) {
+  $output = '';
+  switch ($route_name) {
+    case 'help.page.avatar':
+      $output .= '<p>' . t('Allows the user to pick an avatar from a list.') . '</p>';
+      return $output;
+      
+  }
+}
+
+function avatar_form_user_register_form_alter(&$form, FormStateInterface $form_state, $form_id) {
+  
+  // Modification for the form with the given form ID goes here. For example, if
+  // FORM_ID is "user_register_form" this code would run only on the user
+  // registration form.
+        $avatars = array();
+        // Creating the database connection object
+        $db = \Drupal::database();
+        // getting the number of result to show.
+        $show_per_page = \Drupal::state()->get('avatar_per_page');
+
+        $result = $db->select('avatar_selection','a')->fields('a')->range(0,$show_per_page)->execute()->fetchAllAssoc('fid');
+      
+        foreach ($result as $key => $avatar) {
+          //creating image url
+          $file = File::load($avatar->fid);
+          // Get origin image URI.
+          $image_uri = $file->getFileUri();
+          // Load image style.
+          $image_style = \Drupal::state()->get('avatar_image_style');
+    
+          $style = ImageStyle::load($image_style);
+          // Get URL.
+          $url = $style->buildUrl($image_uri);
+
+          $avatars[$key] = "<img src='$url' alt='$avatar->name'>";
+        }
+
+         $form['picture']['select_avatar'] = [
+            '#type' => 'radios',
+            '#title' => t('or Select Avatar'),
+            '#options' => $avatars,
+            '#attributes' => array('class' => array('user-avatar-select'))
+          ];
+
+        foreach (array_keys($form['actions']) as $action) {
+            if ($action != 'preview' && isset($form['actions'][$action]['#type']) && $form['actions'][$action]['#type'] === 'submit') {
+                $form['actions'][$action]['#submit'][] = 'avatar_form_submit';
+              }
+        }
+}
+
+function avatar_form_submit (array $form, FormStateInterface $form_state) {
+
+        $picture=$form_state->getValue('user_picture');
+        $uid=$form_state->getValue('uid');
+        $picture = isset($picture[0]['fids'][0]) ? $picture[0]['fids'][0] : '';
+        $avatar=$form_state->getValue('select_avatar');
+        //To get the lanuage code:
+        $language = \Drupal::languageManager()->getCurrentLanguage()->getId();
+        $bundle='user';
+        $deleted='0';
+        $entity_id=$uid;
+        $revision_id=$uid;
+        $langcode=$language;
+        $delta=$avatar;
+        $user_picture_target_id=$avatar;
+
+        if(!$picture) {
+        	$db = \Drupal::database();
+          $query = $db->insert('user__user_picture');
+    	    $query->fields([
+    	     'bundle',
+    	     'deleted',
+    	     'entity_id',
+    	     'revision_id',
+    	     'langcode',
+    	     'delta',
+    	     'user_picture_target_id',
+    	    ]);
+    	    $query->values([
+    	     $bundle,
+    	     $deleted,
+    	     $entity_id,
+    	     $revision_id,
+    	     $langcode,
+    	     $delta,
+    	     $user_picture_target_id,
+    	    ]);
+          
+    	     $query->execute();
+        }
+
+}
+
+/**
+ * Implements hook_page_attachments().
+ */
+function avatar_page_attachments(array &$attachments) {
+       $attachments['#attached']['library'][] = 'avatar/avatar-lib';
+}
